@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>WebGIS OGC Services</title>
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@latest/ol.css">
+	<style>
+		html, body {
+			margin: 0;
+			padding: 0;
+			width: 100%;
+			height: 100%;
+			font-family: Arial, sans-serif;
+		}
+		#map {
+			width: 100%;
+			height: 100vh;
+		}
+		.panel {
+			position: absolute;
+			top: 10px;
+			left: 10px;
+			background: white;
+			padding: 12px;
+			border-radius: 8px;
+			z-index: 1000;
+			box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+			min-width: 220px;
+		}
+		.popup {
+			background: white;
+			padding: 10px;
+			border-radius: 5px;
+			border: 1px solid #ccc;
+			min-width: 180px;
+		}
+		select {
+			width: 100%;
+			margin-top: 5px;
+			padding: 5px;
+		}
+	</style>
+</head>
+<body>
+	<div class="panel">
+		<h3>OGC Services</h3>
+		<b>Layer List</b>
+		<br><br>
+		<label>
+			<input type="checkbox" id="toggleWMS" checked>
+			WMS Layer
+		</label>
+		<br>
+		<label>
+			<input type="checkbox" id="toggleWFS" checked>
+			WFS Layer
+		</label>
+		<br><br>
+		<small>
+			Nama: Muhammad Raihan Fadhilah
+			<br>
+			NIM: 24/539466/SV/24606
+		</small>
+	</div>
+	<div id="map"></div>
+	<div id="popup" class="popup"></div>
+	<script src="https://cdn.jsdelivr.net/npm/ol@latest/dist/ol.js"></script>
+	<script>
+		// BASEMAP
+		const osm = new ol.layer.Tile({
+			source: new ol.source.OSM()
+		});
+		// WMS LAYER
+		const wmsLayer = new ol.layer.Tile({
+			source: new ol.source.TileWMS({
+				url: 'https://ahocevar.com/geoserver/wms',
+				params: {
+					'LAYERS': 'ne:ne_10m_admin_0_countries',
+					'TILED': true
+				},
+				serverType: 'geoserver'
+			}),
+			visible: true
+		});
+		// WFS SOURCE
+		const wfsSource = new ol.source.Vector({
+			format: new ol.format.GeoJSON({
+				featureProjection: 'EPSG:3857'
+			}),
+			url:
+				'https://ahocevar.com/geoserver/wfs?' +
+				'service=WFS&' +
+				'version=1.1.0&' +
+				'request=GetFeature&' +
+				'typename=ne:ne_10m_admin_0_countries&' +
+				'outputFormat=application/json',
+			strategy: ol.loadingstrategy.all
+		});
+		// WFS LAYER
+		const wfsLayer = new ol.layer.Vector({
+			source: wfsSource,
+			style: new ol.style.Style({
+				stroke: new ol.style.Stroke({
+					color: 'blue',
+					width: 1.5
+				}),
+				fill: new ol.style.Fill({
+					color: 'rgba(0,0,255,0.1)'
+				})
+			}),
+			visible: true
+		});
+		// MAP
+		const map = new ol.Map({
+			target: 'map',
+			layers: [
+				osm,
+				wmsLayer,
+				wfsLayer
+			],
+			view: new ol.View({
+				center: ol.proj.fromLonLat([110, 0]),
+				zoom: 2
+			})
+		});
+		// POPUP
+		const popupElement = document.getElementById('popup');
+		const popup = new ol.Overlay({
+			element: popupElement
+		});
+		map.addOverlay(popup);
+		// CLICK EVENT
+		map.on('singleclick', function(evt) {
+			let featureFound = false;
+			map.forEachFeatureAtPixel(evt.pixel, function(feature) {
+				featureFound = true;
+				const props = feature.getProperties();
+				popupElement.innerHTML =
+					'<b>Country:</b> ' + props.name +
+					'<br><b>Population:</b> ' + props.pop_est;
+				popup.setPosition(evt.coordinate);
+			});
+			// GETFEATUREINFO WMS
+			if (!featureFound) {
+				const viewResolution =
+					map.getView().getResolution();
+				const url =
+					wmsLayer.getSource().getFeatureInfoUrl(
+						evt.coordinate,
+						viewResolution,
+						'EPSG:3857',
+						{
+							'INFO_FORMAT': 'text/html'
+						}
+					);
+				if (url) {
+					fetch(url)
+						.then(response => response.text())
+						.then(html => {
+							if (html.includes('Feature')) {
+								popupElement.innerHTML = html;
+								popup.setPosition(evt.coordinate);
+							}
+						});
+					}
+				}
+			});
+		// TOGGLE WMS
+		document.getElementById('toggleWMS')
+			.addEventListener('change', function() {
+				wmsLayer.setVisible(this.checked);
+			});
+		// TOGGLE WFS
+		document.getElementById('toggleWFS')
+			.addEventListener('change', function() {
+				wfsLayer.setVisible(this.checked);
+			});
+		// CQL FILTER
+		document.getElementById('name')
+			.addEventListener('change', function() {
+				let selected = this.value;
+				let params = {
+					'LAYERS': 'ne:ne_10m_admin_0_countries',
+					'TILED': true
+				};
+				if (selected !== '') {
+					params.CQL_FILTER =
+					"NAME='" + selected + "'";
+				}
+				console.log(params);
+				wmsLayer.getSource().updateParams(params);
+			});
+	</script>
+</body>
+</html>
